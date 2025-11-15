@@ -3,77 +3,73 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
-        IMAGE_NAME = 'docker26ak'
-        KUBECONFIG = '/var/lib/jenkins/.kube/config'
+        IMAGE_NAME = 'docker26ak/flask-ecommerce'
+        KUBECONFIG_PATH = '/var/lib/jenkins/.kube/config'
+        MINIKUBE_IP = '192.168.49.2'   // <-- replace with your Minikube IP
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo "✅ Checking out source code from GitHub (main branch)..."
-                git branch: 'main', url: 'https://github.com/Akashgithub90/proj.git'
-                sh 'ls -l'
+                echo "Checkout from GitHub..."
+                 git branch: 'main', url: 'https://github.com/Akashgithub90/proj.git'
+            }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "🐳 Building Docker image..."
-                    sh '''
-                        docker build -t $IMAGE_NAME:$BUILD_NUMBER .
-                        docker images | grep flask-ecommerce
-                    '''
-                }
+                sh '''
+                echo "Building Docker image..."
+                docker build -t $IMAGE_NAME:$BUILD_NUMBER .
+                docker images | grep flask-ecommerce
+                '''
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                script {
-                    echo "📤 Pushing image to Docker Hub..."
-                    withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS,
-                                                      usernameVariable: 'DOCKER_USER',
-                                                      passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push $IMAGE_NAME:$BUILD_NUMBER
-                            docker logout
-                        '''
-                    }
+                withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS,
+                                                  usernameVariable: 'DOCKER_USER',
+                                                  passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                    echo "Logging in to Docker Hub..."
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker push $IMAGE_NAME:$BUILD_NUMBER
+                    docker logout
+                    '''
                 }
             }
         }
 
         stage('Deploy to Minikube') {
             steps {
-                script {
-                    echo "⚙️ Deploying to Minikube..."
-                    sh '''
-                        export KUBECONFIG=$KUBECONFIG
-                        echo "🔧 Updating image version in deployment file..."
-                        sed -i "s|image: .*|image: $IMAGE_NAME:$BUILD_NUMBER|" deployment.yaml
+                sh '''
+                echo "Using kubeconfig..."
+                export KUBECONFIG=/var/lib/jenkins/.kube/config}
 
-                        echo "🚀 Applying Kubernetes deployment..."
-                        kubectl apply -f deployment.yaml --validate=false --insecure-skip-tls-verify
+                echo "Updating image in deployment file..."
+                sed -i "s|image: .*|image: ${IMAGE_NAME}:${BUILD_NUMBER}|g" deployment.yaml
 
-                        echo "⏳ Waiting for rollout to complete..."
-                        kubectl rollout status deployment/flask-app --timeout=90s
+                echo "Applying Kubernetes YAML..."
+                kubectl apply -f deployment.yaml --validate=false --insecure-skip-tls-verify
 
-                        echo "🎉 Deployment successful!"
-                        echo "🌍 Access your app at: http://$(minikube ip):30007"
-                    '''
-                }
+                echo "Waiting for rollout..."
+                kubectl rollout status deployment/flask-app --timeout=90s
+
+                echo "Application URL: http://${MINIKUBE_IP}:30007"
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "✅ All stages completed successfully!"
+            echo "Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Deployment failed! Please check Jenkins logs."
+            echo "Pipeline failed! Check logs."
         }
     }
-}
+}}
